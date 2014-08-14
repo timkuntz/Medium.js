@@ -120,7 +120,8 @@ var Medium = (function (w, d) {
             'openBracket': 219,
             'backSlash': 220,
             'closeBraket': 221,
-            'singleQuote': 222
+            'singleQuote': 222,
+            'unprocessedEvent': 229
         },
 
         /**
@@ -826,42 +827,84 @@ var Medium = (function (w, d) {
                 utils = medium.utils,
                 addEvent = utils.addEvent,
                 startValue = element.innerHTML,
+                startRange,
+                initialValue = element.innerHTML,
+                initialRange,
                 timer,
                 stack = new Undo.Stack(),
                 EditCommand = Undo.Command.extend({
-                    constructor: function (oldValue, newValue) {
+                    constructor: function (oldValue, newValue, startRange, newRange) {
                         this.oldValue = oldValue;
                         this.newValue = newValue;
+                        this.lastSelection = startRange;
+                        this.newSelection = newRange;
                     },
                     execute: function () {
                     },
                     undo: function () {
                         element.innerHTML = this.oldValue;
+                        restoreCursor(this.lastSelection);
                         medium.canUndo = stack.canUndo();
                         medium.canRedo = stack.canRedo();
                         medium.dirty = stack.dirty();
                     },
                     redo: function () {
                         element.innerHTML = this.newValue;
+                        restoreCursor(this.newSelection);
                         medium.canUndo = stack.canUndo();
                         medium.canRedo = stack.canRedo();
                         medium.dirty = stack.dirty();
-                    }
+                    },
+
                 }),
+                restoreCursor = function(selection) {
+                    if (typeof selection !== "undefined") {
+                        rangy.restoreSelection(selection);
+                        removeSelectionBoundaries()
+                    }
+                },
+                removeSelectionBoundaries = function() {
+                    var boundaries = element.getElementsByClassName("rangySelectionBoundary");
+                    while(boundaries[0]) {
+                        boundaries[0].parentNode.removeChild(boundaries[0]);
+                    }
+                },
+                startUndoInterval = function () {
+                    clearTimeout(timer);
+                    timer = setTimeout(function () {
+                    makeUndoable();
+                    }, 250);
+                },
+                triggerUndoOrRedo = function (e) {
+                    if (e.shiftKey) {
+                        stack.canRedo() && stack.redo();
+                    } else {
+                        stack.canUndo() && stack.undo();
+                    }
+                },
                 makeUndoable = function () {
+                    var newRange = rangy.saveSelection(element);
                     var newValue = element.innerHTML;
                     // ignore meta key presses
                     if (newValue != startValue) {
 
                         if (!me.movingThroughStack) {
                             // this could try and make a diff instead of storing snapshots
-                            stack.execute(new EditCommand(startValue, newValue));
+                            if (stack.stackPosition === -1) {
+                                stack.execute(new EditCommand(initialValue, newValue, initialRange, newRange));
+                            }
+                            else {
+                                stack.execute(new EditCommand(startValue, newValue, startRange, newRange));
+                            }
+                            startRange = newRange;
                             startValue = newValue;
                             medium.dirty = stack.dirty();
                         }
 
                         utils.triggerEvent(medium.settings.element, "change");
                     }
+
+                    removeSelectionBoundaries();
                 };
 
             this.medium = medium;
@@ -871,33 +914,22 @@ var Medium = (function (w, d) {
             this.EditCommand = EditCommand;
             this.movingThroughStack = false;
 
-            addEvent(element, 'keyup', function (e) {
-                if (e.ctrlKey || e.keyCode === key.z) {
-                    utils.preventDefaultEvent(e);
-                    return;
-                }
-
-                // a way too simple algorithm in place of single-character undo
-                clearTimeout(timer);
-                timer = setTimeout(function () {
-                    makeUndoable();
-                }, 250);
-            });
-
             addEvent(element, 'keydown', function (e) {
-                if (!e.ctrlKey || e.keyCode !== key.z) {
-                    me.movingThroughStack = false;
+                if ((e.ctrlKey || e.metaKey) && !e.altKey && e.keyCode === key.z) {
+                    utils.preventDefaultEvent(e);
+                    me.MovingThroughStack = true
+                    triggerUndoOrRedo(e);
                     return true;
                 }
-
-                utils.preventDefaultEvent(e);
-
-                me.movingThroughStack = true;
-
-                if (e.shiftKey) {
-                    stack.canRedo() && stack.redo()
+                if (e.ctrlKey || e.metaKey) {
+                    return true;
+                }
+                if (e.keyCode === key.unprocessedEvent) {
+                    me.MovingThroughStack = false;
+                    return true;
                 } else {
-                    stack.canUndo() && stack.undo();
+                    me.MovingThroughStack = false;
+                    startUndoInterval();
                 }
             });
         };
