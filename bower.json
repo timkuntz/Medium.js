@@ -6,7 +6,7 @@
 		"url": "https://github.com/jakiestfu/Medium.js"
 	},
 	"dependencies": {
-		"rangy": "https://rangy.googlecode.com/files/rangy-1.3alpha.804.zip",
+		"rangy": "https://github.com/timdown/rangy/releases/download/1.3alpha.20140706/rangy-1.3alpha.20140706.zip",
 		"undo": "https://github.com/jzaefferer/undo/archive/master.zip"
 	}
 }
